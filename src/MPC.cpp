@@ -41,14 +41,14 @@ const size_t delta_start = epsi_start + N;
 const size_t a_start = delta_start + N - 1;
 
 // weights for cost computations
-const double W_cte = 1000.0;
-const double W_epsi = 100.0;
+const double W_cte = 2000.0;
+const double W_epsi = 2000.0;
 const double W_v = 1.0;
 
-const double W_delta = 1000.0;
-const double W_a = 1.0;
+const double W_delta = 5.0;
+const double W_a = 5.0;
 
-const double W_delta_diff = 100; 
+const double W_delta_diff = 200; 
 const double W_a_diff = 10; // 
 
 class FG_eval {

@@ -101,8 +101,8 @@ int main() {
           //cout << "throttle: " << psi << endl;
 
           //average accel (while throttle is 1) in m/s^2 calculated by vf^2 = vi^2 + 2*a*dist_travel
-          //const double accel = 3.802128; 
-          //double vel = v*0.44704; //convert velocity from mph to m/s
+          const double accel = 3.802128; 
+          double vel = v*0.44704; //convert velocity from mph to m/s
 
           // x,y, and psi wrt current car coordinate is always 0
           const double dt = 0.1;
@@ -118,12 +118,10 @@ int main() {
           // State after delay.
 
           // calculate everything based on delay
-          /*
           px = px + vel*cos(psi)*dt;
           py = py + vel*sin(psi)*dt;
           psi = psi + (vel/Lf)*delta*dt;
           v = vel + accel*a*dt;
-          */
           
           int Num_pts = ptsx.size();
           // 6 points
@@ -233,7 +231,7 @@ int main() {
           // the points in the simulator are connected by a Yellow line
           
           double step_size = 2.5;
-          int steps = 10;
+          int steps = 20;
           for (int i = 1;i <= steps; i++) {
             next_x_vals.push_back(step_size*i);
             next_y_vals.push_back(polyeval(coeffs,step_size*i));
@@ -242,7 +240,7 @@ int main() {
           msgJson["next_x"] = next_x_vals;
           msgJson["next_y"] = next_y_vals;
 
-          auto msg = "\n42[\"steer\"," + msgJson.dump() + "]";
+          auto msg = "42[\"steer\"," + msgJson.dump() + "]";
           std::cout << msg << std::endl;
           // Latency
           // The purpose is to mimic real driving conditions where
