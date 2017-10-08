@@ -41,6 +41,15 @@ double polyeval(Eigen::VectorXd coeffs, double x) {
   return result;
 }
 
+// Evaluate derivative polynomial.
+double polyevalDiff(Eigen::VectorXd coeffs, double x) {
+  double result = 0.0;
+  for (int i = 1; i < coeffs.size(); i++) {
+    result += i*coeffs[i] * pow(x, i-1);
+  }
+  return result;
+}
+
 // Fit a polynomial.
 // Adapted from
 // https://github.com/JuliaMath/Polynomials.jl/blob/master/src/Polynomials.jl#L676-L716
@@ -102,33 +111,37 @@ int main() {
 
           //average accel (while throttle is 1) in m/s^2 calculated by vf^2 = vi^2 + 2*a*dist_travel
           const double accel = 3.802128; 
-          double vel = v*0.44704; //convert velocity from mph to m/s
+          v = v*0.44704; //convert velocity from mph to m/s
 
-          // x,y, and psi wrt current car coordinate is always 0
-          const double dt = 0.1;
           const double Lf = 2.67;
+          const double delay = 0.00;
 
-          // Recall the equations for the model:
-          // x_[t+1] = x[t] + v[t] * cos(psi[t]) * dt
-          // y_[t+1] = y[t] + v[t] * sin(psi[t]) * dt
-          // psi_[t+1] = psi[t] + v[t] / Lf * delta[t] * dt
-          // v_[t+1] = v[t] + a[t] * dt
-          // cte[t+1] = f(x[t]) - y[t] + v[t] * sin(epsi[t]) * dt
-          // epsi[t+1] = psi[t] - psides[t] + v[t] * delta[t] / Lf * dt
-          // State after delay.
+          const size_t N_States = 6;
+          Eigen::VectorXd init_state(N_States);
 
-          // calculate everything based on delay
-          px = px + vel*cos(psi)*dt;
-          py = py + vel*sin(psi)*dt;
-          psi = psi + (vel/Lf)*delta*dt;
-          v = vel + accel*a*dt;
-          
           int Num_pts = ptsx.size();
           // 6 points
           //cout << "number of points to fit: " << Num_pts <<endl;
           Eigen::VectorXd ptsx_transformed(Num_pts);
           Eigen::VectorXd ptsy_transformed(Num_pts);
 
+          /*
+          double x_delay = px + v*cos(psi)*delay;
+          double y_delay = py + v*sin(psi)*delay;
+          double psi_delay = psi + (v/Lf)*delta*delay;
+          double v_delay = v + accel*a*delay;
+
+          // Transforms waypoints coordinates to the cars coordinates.
+          // yellow line wrt car at time t + delay
+          for (int i = 0; i < Num_pts; i++ ) {
+            double dx = ptsx[i] - x_delay;
+            double dy = ptsy[i] - y_delay;
+            double minus_psi = 0 - psi_delay;
+            ptsx_transformed[i] = dx * cos( minus_psi ) - dy * sin( minus_psi );
+            ptsy_transformed[i] = dx * sin( minus_psi ) + dy * cos( minus_psi );
+          }
+          */
+          
           // Transforms waypoints coordinates to the cars coordinates.
           for (int i = 0; i < Num_pts; i++ ) {
             double dx = ptsx[i] - px;
@@ -138,32 +151,32 @@ int main() {
             ptsy_transformed[i] = dx * sin( minus_psi ) + dy * cos( minus_psi );
           }
           
+
           //third order fit to help smooth actuation
           auto coeffs = polyfit(ptsx_transformed,ptsy_transformed,3);
+
+          // Initial state wrt car coordinate
+          double x0 = 0;
+          double y0 = 0;
+          double psi0 = 0;
+          double v0 = v;
 
           // The cross track error is calculated by evaluating at polynomial at x, f(x)
           // and subtracting y.
           // f(x) = coeffs[0] + coeffs[1] * x  + coeffs[2] * x^2 + coeffs[3] * x^3 
           // y val at current x (wrt car, is 0) is just coeffs[0]
-          double cte = coeffs[0];
+          double cte0 = coeffs[0];
           // Due to the sign starting at 0, the orientation error is -f'(x).
           // derivative of coeffs[0] + coeffs[1] * x  + coeffs[2] * x^2 + coeffs[3] * x^3 
           // -> coeffs[1] + 2 * coeffs[2] * x + 3 * coeffs[3] * x^2
           // again at current x (x = 0), derivative is just coeffs[1] at x = 0, psi = 0
-          double epsi = -atan(coeffs[1]);
+          double epsi0 = -atan(coeffs[1]);
           /*
           * TODO: Calculate steering angle and throttle using MPC.
           *
           * Both are in between [-1, 1].
           *
           */
-          const size_t N_States = 6;
-          Eigen::VectorXd state(N_States);
-
-          // Initial state.
-          const double x0 = 0;
-          const double y0 = 0;
-          const double psi0 = 0;
 
           // Recall the equations for the model:
           // x_[t+1] = x[t] + v[t] * cos(psi[t]) * dt
@@ -173,23 +186,23 @@ int main() {
           // cte[t+1] = f(x[t]) - y[t] + v[t] * sin(epsi[t]) * dt
           // epsi[t+1] = psi[t] - psides[t] + v[t] * delta[t] / Lf * dt
           // State after delay.
-          /*
-          double x_delay = x0 + v*cos(psi0)*dt;
-          double y_delay = y0 + v*sin(psi0)*dt;
-          double psi_delay = psi0 + (v/Lf)*delta*dt;
-          double v_delay = v + a*dt;
-          double cte_delay = cte + v*sin(epsi)*dt;
-          double epsi_delay = epsi + (v/Lf)*delta*dt;
-          */
+          
+          double x_delay = v0*cos(psi0)*delay;
+          double y_delay = 0.0;
+          double psi_delay = (v0/Lf)*delta*delay;
+          double v_delay = v0 + accel*a*delay;
+          double cte_delay = polyeval(coeffs,x_delay)*cos(psi_delay); // tangental y difference
+          double epsi_delay = psi_delay - atan(polyevalDiff(coeffs,x_delay)); //psi desire - psi
+          
           //use delay state
-          //state << x_delay, y_delay, psi_delay, v_delay, cte_delay, epsi_delay; 
-          state << 0, 0, 0, v, cte, epsi; 
+          init_state << x_delay, y_delay, psi_delay, v_delay, cte_delay, epsi_delay; 
+          //init_state << 0, 0, 0, v_delay, cte, epsi; 
 
-          auto mpc_solution = mpc.Solve(state, coeffs);
+          auto mpc_solution = mpc.Solve(init_state, coeffs);
 
           // NOTE: Remember to divide by deg2rad(25) before you send the steering value back.
           // Otherwise the values will be in between [-deg2rad(25), deg2rad(25] instead of [-1, 1].
-          double steer_value = -mpc_solution[0]/(deg2rad(25));
+          double steer_value = -(mpc_solution[0]/deg2rad(25));
           double throttle_value = mpc_solution[1];
 
           json msgJson;
@@ -198,21 +211,21 @@ int main() {
           msgJson["steering_angle"] = steer_value;
           msgJson["throttle"] = throttle_value;
 
-          const size_t N = 10;
+          const size_t N = 12;
 
           //Display the MPC predicted trajectory 
           vector<double> mpc_x_vals;
           vector<double> mpc_y_vals;
 
           //move N-1 y trajectory
-          for (int i = 0;i<N-1;i++) {
-            mpc_x_vals.push_back(mpc_solution[2 + i]);
+          for (size_t t = 0;t<N-1;t++) {
+            mpc_x_vals.push_back(mpc_solution[2 + t]);
           }
           //cout << " x val " << mpc_x_vals.size() << endl;
 
           //move N-1 y trajectory
-          for (int i = 0;i<N-1;i++) {
-            mpc_y_vals.push_back(mpc_solution[2 + (N-1) + i]);
+          for (size_t t = 0;t<N-1;t++) {
+            mpc_y_vals.push_back(mpc_solution[2 + (N-1) + t]);
           }
 
           //cout << " y val " << mpc_y_vals.size() << endl;
@@ -231,7 +244,7 @@ int main() {
           // the points in the simulator are connected by a Yellow line
           
           double step_size = 2.5;
-          int steps = 20;
+          int steps = 40;
           for (int i = 1;i <= steps; i++) {
             next_x_vals.push_back(step_size*i);
             next_y_vals.push_back(polyeval(coeffs,step_size*i));
@@ -251,7 +264,7 @@ int main() {
           //
           // NOTE: REMEMBER TO SET THIS TO 100 MILLISECONDS BEFORE
           // SUBMITTING.
-          this_thread::sleep_for(chrono::milliseconds(100));
+          this_thread::sleep_for(chrono::milliseconds( int(delay*1000)  ));
           ws.send(msg.data(), msg.length(), uWS::OpCode::TEXT);
         }
       } else {
