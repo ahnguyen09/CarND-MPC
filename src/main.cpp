@@ -79,8 +79,8 @@ int main() {
 
   // MPC is initialized here!
   MPC mpc;
-
-  h.onMessage([&mpc](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
+  auto time_old = chrono::system_clock::now();
+  h.onMessage([&mpc,&time_old](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
                      uWS::OpCode opCode) {
     // "42" at the start of the message means there's a websocket message event.
     // The 4 signifies a websocket message
@@ -114,7 +114,15 @@ int main() {
           v = v*0.44704; //convert velocity from mph to m/s
 
           const double Lf = 2.67;
-          const double delay = 0.00;
+
+          auto time_now = chrono::system_clock::now();
+          chrono::duration<double> diff = time_now - time_old;
+          time_old = time_now;
+          cout << "Time diff: " << diff.count() << endl;
+
+          double delay = 0.113;
+          //lower delay cap
+          //delay = (delay < 0.125) ? 0.125 : delay;
 
           const size_t N_States = 6;
           Eigen::VectorXd init_state(N_States);
@@ -125,39 +133,26 @@ int main() {
           Eigen::VectorXd ptsx_transformed(Num_pts);
           Eigen::VectorXd ptsy_transformed(Num_pts);
 
-          /*
           double x_delay = px + v*cos(psi)*delay;
           double y_delay = py + v*sin(psi)*delay;
-          double psi_delay = psi + (v/Lf)*delta*delay;
+          double psi_delay = (v/Lf)*delta*delay;
           double v_delay = v + accel*a*delay;
 
           // Transforms waypoints coordinates to the cars coordinates.
-          // yellow line wrt car at time t + delay
           for (int i = 0; i < Num_pts; i++ ) {
             double dx = ptsx[i] - x_delay;
             double dy = ptsy[i] - y_delay;
-            double minus_psi = 0 - psi_delay;
-            ptsx_transformed[i] = dx * cos( minus_psi ) - dy * sin( minus_psi );
-            ptsy_transformed[i] = dx * sin( minus_psi ) + dy * cos( minus_psi );
-          }
-          */
-          
-          // Transforms waypoints coordinates to the cars coordinates.
-          for (int i = 0; i < Num_pts; i++ ) {
-            double dx = ptsx[i] - px;
-            double dy = ptsy[i] - py;
             double minus_psi = 0 - psi;
             ptsx_transformed[i] = dx * cos( minus_psi ) - dy * sin( minus_psi );
             ptsy_transformed[i] = dx * sin( minus_psi ) + dy * cos( minus_psi );
           }
-          
 
           //third order fit to help smooth actuation
           auto coeffs = polyfit(ptsx_transformed,ptsy_transformed,3);
 
-          // Initial state wrt car coordinate
-          double x0 = 0;
-          double y0 = 0;
+          //initial state based on current reaading after rotation
+          //double x0 = 0;
+          //double y0 = 0;
           double psi0 = 0;
           double v0 = v;
 
@@ -178,25 +173,8 @@ int main() {
           *
           */
 
-          // Recall the equations for the model:
-          // x_[t+1] = x[t] + v[t] * cos(psi[t]) * dt
-          // y_[t+1] = y[t] + v[t] * sin(psi[t]) * dt
-          // psi_[t+1] = psi[t] + v[t] / Lf * delta[t] * dt
-          // v_[t+1] = v[t] + a[t] * dt
-          // cte[t+1] = f(x[t]) - y[t] + v[t] * sin(epsi[t]) * dt
-          // epsi[t+1] = psi[t] - psides[t] + v[t] * delta[t] / Lf * dt
-          // State after delay.
-          
-          double x_delay = v0*cos(psi0)*delay;
-          double y_delay = 0.0;
-          double psi_delay = (v0/Lf)*delta*delay;
-          double v_delay = v0 + accel*a*delay;
-          double cte_delay = polyeval(coeffs,x_delay)*cos(psi_delay); // tangental y difference
-          double epsi_delay = psi_delay - atan(polyevalDiff(coeffs,x_delay)); //psi desire - psi
-          
           //use delay state
-          init_state << x_delay, y_delay, psi_delay, v_delay, cte_delay, epsi_delay; 
-          //init_state << 0, 0, 0, v_delay, cte, epsi; 
+          init_state << 0, 0, 0, v_delay, cte0, epsi0; 
 
           auto mpc_solution = mpc.Solve(init_state, coeffs);
 
@@ -245,9 +223,9 @@ int main() {
           
           double step_size = 2.5;
           int steps = 40;
-          for (int i = 1;i <= steps; i++) {
-            next_x_vals.push_back(step_size*i);
-            next_y_vals.push_back(polyeval(coeffs,step_size*i));
+          for (int i = 0;i <= steps; i++) {
+            next_x_vals.push_back(fabs(x_delay - px) + step_size*i);
+            next_y_vals.push_back(polyeval(coeffs,next_x_vals[i]));
           }
           
           msgJson["next_x"] = next_x_vals;
@@ -264,7 +242,8 @@ int main() {
           //
           // NOTE: REMEMBER TO SET THIS TO 100 MILLISECONDS BEFORE
           // SUBMITTING.
-          this_thread::sleep_for(chrono::milliseconds( int(delay*1000)  ));
+
+          this_thread::sleep_for(chrono::milliseconds(100));
           ws.send(msg.data(), msg.length(), uWS::OpCode::TEXT);
         }
       } else {

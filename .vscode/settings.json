@@ -25,6 +25,7 @@
         "utility": "cpp",
         "functional": "cpp",
         "cmath": "cpp",
-        "complex": "cpp"
+        "complex": "cpp",
+        "chrono": "cpp"
     }
 }

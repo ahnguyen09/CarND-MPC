@@ -16,10 +16,6 @@ const size_t N_Actuators = 2;
 
 // time
 const double dt = 0.1;
-// I started with dt = 0.1 to match delay and N = 20.
-// With N = 20, the calculated trajectory was following the yellow line for too long.
-// This means that cost contribution after a certain N steps is negligible and a waste in computation.
-// So I decrease N to allow calculated trajectory to get to the yellow line. I feel like it looks good at N=12 and dt = 0.1.
 
 // This value assumes the model presented in the classroom is used.
 //
@@ -45,13 +41,13 @@ const size_t a_start = delta_start + (N-1);
 
 // weights for cost computations
 const double W_cte = 5.0;
-const double W_epsi = 25.0; // we care more about epsi if we want to limit over steer
+const double W_epsi = 500.0; // we care more about epsi if we want to limit over steer
 const double W_v = 5.0;
 
-const double W_delta = 4000.0; // punish delta heavily to prevent large oscilation/ over steer
+const double W_delta = 1000.0; // punish delta heavily to prevent large oscilation/ over steer
 const double W_a = 5.0;
 
-const double W_delta_diff = 100.0; 
+const double W_delta_diff = 5000.0; 
 const double W_a_diff = 5.0; // 
 typedef CPPAD_TESTVECTOR(AD<double>) ADvector;
 
@@ -129,8 +125,8 @@ class FG_eval {
       // v_[t+1] = v[t] + a[t] * dt
       // cte[t+1] = f(x[t]) - y[t] + v[t] * sin(epsi[t]) * dt
       // epsi[t+1] = psi[t] - psides[t] + v[t] * delta[t] / Lf * dt
-      x_out[t] = x_i + v_i * CppAD::cos(psi_i) * dt;
-      y_out[t] = y_i + v_i * CppAD::sin(psi_i) * dt;
+      x_out[t] = x_i + v_i*CppAD::cos(psi_i)*dt;
+      y_out[t] = y_i + v_i*CppAD::sin(psi_i)*dt;
       psi_out[t] = psi_i + (v_i/Lf)*delta_i*dt;
       v_out[t] = v_i + a_i*accel*dt; //scale accel based on throttle
       
@@ -153,7 +149,7 @@ class FG_eval {
     fg[0] = 0;
 
     //in terms of m/s!
-    double ref_v = 33.528; // 75 mph
+    double ref_v = 50*0.44704; //convert velocity from mph to m/s
 
     //accumulate the trajectory error
     for (size_t t = 0; t < N; t++) {

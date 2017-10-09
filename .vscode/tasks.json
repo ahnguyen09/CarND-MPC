@@ -9,7 +9,11 @@
             "command": "sudo sh build.sh",
             "problemMatcher": [
                 "$gcc"
-            ]
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            }
         },
         {
             "taskName": "run",
